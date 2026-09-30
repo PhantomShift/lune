@@ -90,11 +90,7 @@ impl<'lua> ToLua<'lua> for <<ENUM_NAME>> {
     fn to_lua(self, lua: &'lua Lua) -> LuaResult<LuaValue<'lua>> {
         match EnumItem::from_enum_name_and_name("<<ENUM_NAME>>", self.to_string()) {
             Some(enum_item) => Ok(LuaValue::UserData(lua.create_userdata(enum_item)?)),
-            None => Err(LuaError::ToLuaConversionError {
-                from: "<<ENUM_NAME>>",
-                to: "EnumItem",
-                message: Some(format!("Found unknown Enum.<<ENUM_NAME>> value '{}'", self)),
-            }),
+            None => Err(LuaError::external(format!("Found unknown Enum.<<ENUM_NAME>> value '{}'", self))),
         }
     }
 }
