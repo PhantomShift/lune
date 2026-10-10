@@ -259,7 +259,11 @@ fn instance_property_get(
         return this.get_name().into_lua(lua);
     }
 
-    if let Some(info) = find_property_info(this.class_name, &prop_name) {
+    if let Some(getter) = InstanceRegistry::find_property_getter(lua, &this, &prop_name) {
+        // The canonical userdata is passed - no borrow is held at this point,
+        // so the callback may freely call methods on it.
+        getter.call(this_ud.clone())
+    } else if let Some(info) = find_property_info(this.class_name, &prop_name) {
         if let Some(prop) = this.get_property(&prop_name) {
             if let DomValue::Enum(enum_value) = prop {
                 let enum_name = info.enum_name.ok_or_else(|| {
@@ -304,10 +308,6 @@ fn instance_property_get(
                 "Failed to get property '{prop_name}' - malformed property info",
             )))
         }
-    } else if let Some(getter) = InstanceRegistry::find_property_getter(lua, &this, &prop_name) {
-        // The canonical userdata is passed - no borrow is held at this point,
-        // so the callback may freely call methods on it.
-        getter.call(this_ud.clone())
     } else if let Some(method) = InstanceRegistry::find_method(lua, &this, &prop_name) {
         Ok(LuaValue::Function(method))
     } else if let Some(inst) = this.find_child(|inst| inst.name == prop_name) {
@@ -379,7 +379,9 @@ fn instance_property_set(
         _ => {}
     }
 
-    if let Some(info) = find_property_info(this.class_name, &prop_name) {
+    if let Some(setter) = InstanceRegistry::find_property_setter(lua, &this, &prop_name) {
+        setter.call((this_ud.clone(), prop_value))
+    } else if let Some(info) = find_property_info(this.class_name, &prop_name) {
         if let Some(enum_name) = info.enum_name {
             match LuaUserDataRef::<EnumItem>::from_lua(prop_value, lua) {
                 Ok(given_enum) if given_enum.parent.desc.name == enum_name => {
@@ -405,8 +407,6 @@ fn instance_property_set(
                 "Failed to set property '{prop_name}' - malformed property info",
             )))
         }
-    } else if let Some(setter) = InstanceRegistry::find_property_setter(lua, &this, &prop_name) {
-        setter.call((this_ud.clone(), prop_value))
     } else {
         Err(LuaError::RuntimeError(format!(
             "{prop_name} is not a valid member of {this}",
